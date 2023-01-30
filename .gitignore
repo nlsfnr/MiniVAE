@@ -1,0 +1,8 @@
+.mypy_cache/
+.requirements.freeze.txt
+.venv/
+data/
+tokenizers/
+zoo/
+*.log
+*.png

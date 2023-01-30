@@ -1,0 +1,25 @@
+# ML
+dm-haiku
+jmp
+chex
+optax
+einops
+
+# Data
+torch
+torchvision
+tqdm
+Pillow
+lmdb
+
+# Other
+click
+pyyaml
+pydantic
+matplotlib
+
+# Dev-Ops
+mypy
+flake8
+pytest
+isort
