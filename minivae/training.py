@@ -77,6 +77,7 @@ class TelemetryData:
     kl_loss: Array
 
 
+@common.consistent_axes
 def train(config: TrainingConfig,
           params: ArrayTree,
           opt_state: optax.OptState,
@@ -173,7 +174,11 @@ def loss_fn(samples: Array,
             config: TrainingConfig,
             ) -> Tuple[Array, Dict[str, Any]]:
     model = nn.VAE.from_config(config)
-    common.assert_shape(samples, 'B H W C')
+    common.assert_shape(samples, 'B H W C',
+                        B=config.batch_size,
+                        H=config.shape[0],
+                        W=config.shape[1],
+                        C=config.shape[2])
     # Accumulate the loss
     samples_splits = rearrange(samples, '(o b) ... -> o b ...',
                                o=config.gradient_accumulation_steps)
@@ -181,14 +186,17 @@ def loss_fn(samples: Array,
     rec_losses = []
     kl_losses = []
     for split in samples_splits:
-        common.assert_shape(split, 'S H W C')
+        common.assert_shape(split, 'S H W C',
+                            S=config.batch_size // config.gradient_accumulation_steps)
         output: nn.VAEOutput = model(split, is_training=True)
         rec_losses.append(output.reconstruction_loss)
         kl_losses.append(output.kl_loss)
-        loss += output.reconstruction_loss + output.kl_loss
-    loss = loss / len(samples_splits)
-    return loss, dict(rec_loss=jnp.mean(jnp.asarray(rec_losses)),
-                      kl_loss=jnp.mean(jnp.asarray(kl_losses)),
+    rec_loss = jnp.mean(jnp.asarray(rec_losses))
+    kl_loss = jnp.mean(jnp.asarray(kl_losses))
+    alpha = 0.9
+    loss = alpha * rec_loss + (1 - alpha) * kl_loss
+    return loss, dict(rec_loss=rec_loss,
+                      kl_loss=kl_loss,
                       loss=loss)
 
 
@@ -373,7 +381,9 @@ class Config(common.YamlConfig):
 
     # Model config
     encoder_sizes: List[int]
+    encoder_strides: List[int]
     decoder_sizes: List[int]
+    decoder_strides: List[int]
     latent_size: int
     dropout: float
 

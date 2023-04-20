@@ -17,6 +17,7 @@ click
 pyyaml
 pydantic
 matplotlib
+pandas
 
 # Dev-Ops
 mypy

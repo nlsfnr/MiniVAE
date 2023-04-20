@@ -32,11 +32,14 @@ def test_vae_encoder_call() -> None:
 
     @hk.testing.transform_and_run
     def fn() -> None:
-        encoder = nn.VAEEncoder(sizes=[16, 32, 64], out_size=32, dropout=0.1)
+        encoder = nn.VAEEncoder(sizes=[16, 32, 64],
+                                strides=[2, 1, 2],
+                                out_size=32,
+                                dropout=0.1)
         x = jnp.ones((1, 16, 16, 3))
         z = encoder(x, True)
-        assert z.mean.shape == (1, 2, 2, 32)
-        assert z.stddev.shape == (1, 2, 2, 32)
+        assert z.mean.shape == (1, 4, 4, 32)
+        assert z.stddev.shape == (1, 4, 4, 32)
 
     fn()  # type: ignore
 
@@ -45,10 +48,13 @@ def test_vae_decoder_call() -> None:
 
     @hk.testing.transform_and_run
     def fn() -> None:
-        decoder = nn.VAEDecoder(sizes=[64, 32, 16], out_size=3, dropout=0.1)
+        decoder = nn.VAEDecoder(sizes=[64, 32, 16],
+                                strides=[2, 1, 2],
+                                out_size=3,
+                                dropout=0.1)
         x = jnp.ones((1, 2, 2, 128))
         y = decoder(x, True)
-        assert y.shape == (1, 16, 16, 3)
+        assert y.shape == (1, 8, 8, 3)
 
     fn()  # type: ignore
 
@@ -57,8 +63,14 @@ def test_vae_encoder_decoder_call() -> None:
 
     @hk.testing.transform_and_run
     def fn() -> None:
-        encoder = nn.VAEEncoder(sizes=[16, 32, 64], out_size=32, dropout=0.1)
-        decoder = nn.VAEDecoder(sizes=[64, 32, 16], out_size=3, dropout=0.1)
+        encoder = nn.VAEEncoder(sizes=[16, 32, 64],
+                                strides=[2, 2, 2],
+                                out_size=32,
+                                dropout=0.1)
+        decoder = nn.VAEDecoder(sizes=[64, 32, 16],
+                                strides=[2, 2, 2],
+                                out_size=3,
+                                dropout=0.1)
         x = jnp.ones((1, 16, 16, 3))
         z = encoder(x, True)
         x_hat = decoder(z.mean, True)
@@ -74,8 +86,11 @@ def test_vae_call() -> None:
     @hk.testing.transform_and_run
     def fn() -> None:
         vae = nn.VAE(encoder_sizes=[16, 32, 64],
+                     encoder_strides=[2, 2, 2],
                      decoder_sizes=[64, 32, 16],
+                     decoder_strides=[2, 2, 2],
                      latent_size=32,
+                     image_channels=3,
                      dropout=0.1)
         x = jnp.ones((1, 16, 16, 3))
         result = vae(x, True)

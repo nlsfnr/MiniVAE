@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 import logging
+import random
 from functools import partial
 from pathlib import Path
-import random
-import math
-from typing import Optional, Protocol, List, Tuple
+from typing import List, Optional, Protocol, Tuple
 
 import chex
 import click
 import haiku as hk
 import jax
 import jax.numpy as jnp
-import numpy as np
 from chex import Array
 from PIL import Image
 
@@ -63,11 +61,11 @@ def recreate(config: InferenceConfig,
         return model(x, is_training=False)
 
     # Execution
+    common.assert_shape(x, 'B H W C', B=1)
     with jax.disable_jit(not use_jit):
         forward = partial(hk.transform(model_fn).apply, params)
         outputs = forward(rng)
         return outputs
-
 
 
 def get_cli() -> click.Group:
@@ -77,7 +75,9 @@ def get_cli() -> click.Group:
 
         # Model config
         encoder_sizes: List[int]
+        encoder_strides: List[int]
         decoder_sizes: List[int]
+        decoder_strides: List[int]
         latent_size: int
         shape: Tuple[int, int, int]
         dropout: float = 0.1
@@ -100,19 +100,11 @@ def get_cli() -> click.Group:
         config = checkpoint['config']
         params = checkpoint['params']
         height, width, _ = config.shape
-        fraction = 0.5 ** len(config.encoder_sizes)
-        h, w, c = int(height * fraction), int(width * fraction), config.latent_size
+        s = jnp.prod(jnp.array(config.decoder_strides))
+        h, w, c = height // s, width // s, config.latent_size
         z = jax.random.normal(next(rngs), (1, h, w, c))
-        x = generate(config, params, z, use_jit=False)[0]
-        if x.shape[-1] == 1:
-            x = x[..., 0]
-        image = Image.fromarray((np.asarray(x) * 127.5 + 127.5).astype(np.uint8), 'L')
-        image.show()
-        if out is None:
-            image.show()
-        else:
-            image.save(out)
-
+        x = generate(config, params, z, use_jit=False)
+        common.to_pil_image(x, show=out is None, save=out)
 
     @cli.command('recreate')
     @click.option('--load-from', '-l', type=Path,
@@ -146,17 +138,9 @@ def get_cli() -> click.Group:
             inputs = jnp.asarray(transform(image))
         else:
             raise ValueError('Either image-path or dataset-path must be provided.')
-        output = recreate(config, params, inputs, next(rngs), use_jit=False)
-        both = jnp.concatenate([inputs, output.x_hat], axis=1)
-        if both.shape[-1] == 1:
-            both = both[..., 0]
-        image = Image.fromarray((np.asarray(both) * 127.5 + 127.5).astype(np.uint8), 'L')
-        image.show()
-        if out is None:
-            image.show()
-        else:
-            image.save(out)
-
+        output = recreate(config, params, inputs[None], next(rngs), use_jit=False)
+        both = jnp.concatenate([inputs[None], output.x_hat], axis=2)
+        common.to_pil_image(both, show=out is None, save=out)
 
     return cli
 

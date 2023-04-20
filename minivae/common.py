@@ -4,8 +4,10 @@ import logging
 import pickle
 import random
 import sys
+from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union
+from typing import (Any, Callable, Dict, List, Optional, Type, TypeVar, Union,
+                    cast)
 
 import chex
 import click
@@ -16,6 +18,7 @@ import numpy as np
 import optax
 import pydantic
 import yaml
+from PIL import Image
 
 NAME = 'MiniVAE'
 
@@ -158,11 +161,103 @@ def get_cli_group(name: str) -> click.Group:
 
 
 ArrayT = TypeVar('ArrayT', bound=Union[np.ndarray, chex.Array])
+CallableT = TypeVar('CallableT', bound=Callable)
+_AXES_STACK: List[Dict[str, int]] = []
 
 
-def assert_shape(x: ArrayT, names: str) -> ArrayT:
+def assert_shape(x: ArrayT, names: str, **values: int) -> ArrayT:
+    '''Assert that the shape of x has the given names and values.
+
+    This can be used in conjunction with `consistent_axes` to ensure that axes
+    with the same name are consistent within one function call. Axes with a
+    name starting with '_' will not be stored.
+
+    Example:
+
+        @consistent_axes
+        def f(x: Array) -> Array:
+            assert_shape(x, 'B N C', B=2)
+            y = x ** 2
+            assert_shape(y, 'B N C')
+
+        @consistent_axes
+        def f(x: Array) -> Array:
+            assert_shape(x, 'B N C', B=2)
+            y = jnp.concatenate([x, x], axis=1)
+            assert_shape(y, 'B N C')  # Raises an error
+    '''
+    global _AXES_STACK
+    # Parse axis names
     axes = [axis for axis in names.split() if axis]
+    # Check rank
     if len(x.shape) != len(axes):
         raise ValueError(f'Expected axes {" ".join(axes)}, '
                          f'got {" ".join(map(str, x.shape))}')
+    # Check against explicit values
+    for axis, name in enumerate(axes):
+        if name in values and x.shape[axis] != values[name]:
+            raise ValueError(f'Expected axis {name} to be {values[name]}, '
+                             f'got {x.shape[axis]}')
+    # Check against consistent axis values
+    if _AXES_STACK:
+        for axis, name in enumerate(axes):
+            expected = _AXES_STACK[-1].get(name, None)
+            actual = x.shape[axis]
+            if expected is not None and actual != expected:
+                raise ValueError(f'Expected axis {name} to be {expected}, got {actual}')
+            if name.startswith('_'):
+                continue
+            _AXES_STACK[-1][name] = actual
     return x
+
+
+def consistent_axes(fn: CallableT,
+                    inherit: str = '',
+                    ) -> CallableT:
+
+    @wraps(fn)
+    def wrapped(*args, **kwargs) -> Any:
+        global _AXES_STACK
+        axes = dict()
+        if inherit and _AXES_STACK:
+            names = [axis for axis in inherit.split() if axis]
+            parent = _AXES_STACK[-1]
+            axes.update({name: parent[name] for name in names if name in parent})
+        _AXES_STACK.append(axes)
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _AXES_STACK.pop()
+
+    return cast(CallableT, wrapped)
+
+
+def to_pil_image(src: Union[np.ndarray, chex.Array],
+                 show: bool = False,
+                 save: Optional[Path] = None,
+                 ) -> Image.Image:
+    '''Convert an array intto a PIL image, optionally showing or saving it.'''
+    x = np.clip((np.asarray(src) * 127.5 + 127.5), 0, 255).astype(np.uint8)
+    # Remove batch dimension
+    if len(x.shape) == 4:
+        if x.shape[0] == 1:
+            x = x[0]
+        else:
+            raise ValueError(f'Expected a single image, got {x.shape}')
+    # Grayscale
+    if len(x.shape) == 3 and x.shape[-1] == 1:
+        x = x[..., 0]
+    if len(x.shape) == 2:
+        image = Image.fromarray(x, 'L')
+    # RGB
+    else:
+        channels = x.shape[-1]
+        if channels != 3:
+            raise ValueError(f'Expected 1 or 3 channels, got {channels}')
+        image = Image.fromarray(x, 'RGB')
+    # Save or show it
+    if save is not None:
+        image.save(save)
+    if show:
+        image.show()
+    return image

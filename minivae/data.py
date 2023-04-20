@@ -7,7 +7,7 @@ import logging
 import sys
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, Protocol, Tuple, Optional
+from typing import Any, Callable, Dict, Iterator, Optional, Protocol, Tuple
 
 import click
 import lmdb

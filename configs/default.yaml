@@ -1,23 +1,25 @@
-batch_size: 128
-use_half_precision: true
-loss_scale_period: 50
+batch_size: 512
+use_half_precision: false
+loss_scale_period: 100
 initial_loss_scale_log2: 15
 gradient_accumulation_steps: 4
-peak_learning_rate: 0.002
-end_learning_rate: 0.0001
+peak_learning_rate: 0.0002
+end_learning_rate: 0.00002
 warmup_steps: 100
 total_steps: 10000
 weight_decay: 0.01
 
 # Model config
-encoder_sizes: [16, 32, 64]
-decoder_sizes: [64, 32, 16]
-latent_size: 16
-dropout: 0.1
+encoder_sizes:   [32, 32, 32]
+encoder_strides: [ 2,  2, 2]
+decoder_sizes:   [32, 32, 32]
+decoder_strides: [ 2,  2, 2]
+latent_size: 4
+dropout: 0.0
 
 # Data config
-dataset_path: ./data/celeba/
-shape: [32, 32, 3]
+dataset_path: ./data/mnist/
+shape: [16, 16, 1]
 
 # DataLoader config
-num_workers: 6
+num_workers: 3
