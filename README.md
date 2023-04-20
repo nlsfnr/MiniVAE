@@ -6,10 +6,10 @@ A Variational Auto-Encoder (VAE) implemented in Jax.
 
 The main files are
 
-- [`./minigpt/nn.py`](/minigpt/nn.py) - The model and its components.
-- [`./minigpt/training.py`](/minigpt/training.py) - The training loop and loss
+- [`./minivae/nn.py`](/minivae/nn.py) - The model and its components.
+- [`./minivae/training.py`](/minivae/training.py) - The training loop and loss
   function.
-- [`./minigpt/inference.py`](/minigpt/inference.py) - Methods to use pretrained
+- [`./minivae/inference.py`](/minivae/inference.py) - Methods to use pretrained
   models for inference.
 
 ## Details
