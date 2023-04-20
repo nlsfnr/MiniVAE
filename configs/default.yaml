@@ -2,12 +2,12 @@ batch_size: 512
 use_half_precision: false
 loss_scale_period: 100
 initial_loss_scale_log2: 15
-gradient_accumulation_steps: 4
 peak_learning_rate: 0.0002
 end_learning_rate: 0.00002
 warmup_steps: 100
 total_steps: 10000
 weight_decay: 0.01
+alpha: 0.8
 
 # Model config
 encoder_sizes:   [32, 32, 32]

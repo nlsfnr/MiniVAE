@@ -40,7 +40,6 @@ T = TypeVar('T')
 class TrainingConfig(nn.ModelConfig, Protocol):
     '''Configuration for training.'''
     batch_size: int
-    gradient_accumulation_steps: int  # Must divide batch_size
     use_half_precision: bool
     loss_scale_period: Optional[int]
     initial_loss_scale_log2: Optional[int]
@@ -49,6 +48,7 @@ class TrainingConfig(nn.ModelConfig, Protocol):
     warmup_steps: int
     total_steps: Optional[int]
     weight_decay: float
+    alpha: float
 
     @classmethod
     @abstractmethod
@@ -104,10 +104,6 @@ def train(config: TrainingConfig,
     for epoch in count():
         for samples in dataloader:
             common.assert_shape(samples, 'B H W C')
-            # Note that due to the JAX's asynchronous dispatch, the timing
-            # information is not accurate within one step and should only be
-            # considered across multiple steps.
-            # See: https://jax.readthedocs.io/en/latest/async_dispatch.html
             samples = policy.cast_to_compute(samples)
             # Split samples and RNG between devices
             samples = rearrange(samples, '(d b) ... -> d b ...', d=device_count)
@@ -179,24 +175,11 @@ def loss_fn(samples: Array,
                         H=config.shape[0],
                         W=config.shape[1],
                         C=config.shape[2])
-    # Accumulate the loss
-    samples_splits = rearrange(samples, '(o b) ... -> o b ...',
-                               o=config.gradient_accumulation_steps)
-    loss = jnp.zeros((), dtype=jnp.float32)
-    rec_losses = []
-    kl_losses = []
-    for split in samples_splits:
-        common.assert_shape(split, 'S H W C',
-                            S=config.batch_size // config.gradient_accumulation_steps)
-        output: nn.VAEOutput = model(split, is_training=True)
-        rec_losses.append(output.reconstruction_loss)
-        kl_losses.append(output.kl_loss)
-    rec_loss = jnp.mean(jnp.asarray(rec_losses))
-    kl_loss = jnp.mean(jnp.asarray(kl_losses))
-    alpha = 0.9
-    loss = alpha * rec_loss + (1 - alpha) * kl_loss
-    return loss, dict(rec_loss=rec_loss,
-                      kl_loss=kl_loss,
+    output: nn.VAEOutput = model(samples, is_training=True)
+    alpha = config.alpha
+    loss = alpha * output.reconstruction_loss + (1 - alpha) * output.kl_loss
+    return loss, dict(rec_loss=output.reconstruction_loss,
+                      kl_loss=output.kl_loss,
                       loss=loss)
 
 
@@ -335,6 +318,8 @@ def autolog(telemetry_iter: Iterator[TelemetryData],
                         f' | rec: {mean_rec_loss:.4f}'
                         f' | kl: {mean_kl_loss:.4f}')
             loss_history.clear()
+            rec_loss_history.clear()
+            kl_loss_history.clear()
         yield telemetry
 
 
@@ -372,12 +357,12 @@ class Config(common.YamlConfig):
     use_half_precision: bool
     loss_scale_period: Optional[int]
     initial_loss_scale_log2: Optional[int]
-    gradient_accumulation_steps: int  # Must divide batch_size
     peak_learning_rate: float
     end_learning_rate: float
     warmup_steps: int
     total_steps: Optional[int]
     weight_decay: float
+    alpha: float
 
     # Model config
     encoder_sizes: List[int]
